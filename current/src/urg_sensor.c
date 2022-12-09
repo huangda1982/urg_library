@@ -194,7 +194,7 @@ static void ignore_receive_data_with_qt(urg_t *urg, int timeout)
     if ((urg->is_sending == URG_FALSE) && (urg->is_laser_on == URG_FALSE)) {
         return;
     }
-
+    
     connection_write(&urg->connection, "QT\n", 3);
     urg->is_laser_on = URG_FALSE;
     ignore_receive_data(urg, timeout);
@@ -465,6 +465,14 @@ static urg_measurement_type_t parse_distance_parameter(urg_t *urg,
         } else if ((echoback[0] == 'H') || (echoback[0] == 'N')) {
             ret_type = URG_MULTIECHO_INTENSITY;
         }
+    } else if (echoback[1] == 'F') {
+        if ((echoback[0] == 'G') || (echoback[0] == 'M')) {
+            ret_type = URG_DISTANCE_IO;
+        }
+    } else if (echoback[1] == 'G') {
+        if ((echoback[0] == 'G') || (echoback[0] == 'M')) {
+            ret_type = URG_DISTANCE_INTENSITY_IO;
+        }
     } else {
         return URG_UNKNOWN;
     }
@@ -518,7 +526,9 @@ static int receive_length_data(urg_t *urg, long length[],
     int is_multiecho = URG_FALSE;
     int multiecho_max_size = 1;
 
-    if ((type == URG_DISTANCE_INTENSITY) || (type == URG_MULTIECHO_INTENSITY)) {
+    if ((type == URG_DISTANCE_INTENSITY)
+        || (type == URG_DISTANCE_INTENSITY_IO) 
+        || (type == URG_MULTIECHO_INTENSITY)) {
         data_size *= 2;
         is_intensity = URG_TRUE;
     }
@@ -538,13 +548,13 @@ static int receive_length_data(urg_t *urg, long length[],
         if (n > 0) {
             // \~japanese チェックサムの評価
             // \~english Validates the checksum
-            if (buffer[line_filled + n - 1] !=
-                scip_checksum(&buffer[line_filled], n - 1)) {
+            if (buffer[line_filled + n - 1] != scip_checksum(&buffer[line_filled], n - 1) &&
+                (urg->ignore_checkSumError == 0)) {
                 ignore_receive_data_with_qt(urg, urg->timeout);
                 return set_errno_and_return(urg, URG_CHECKSUM_ERROR);
             }
         }
-
+        
         if (n > 0) {
             line_filled += n - 1;
         }
@@ -630,7 +640,7 @@ static int receive_length_data(urg_t *urg, long length[],
 
 
 //! \~japanese 距離データの取得  \~english Gets measurement data
-static int receive_data(urg_t *urg, long data[], unsigned short intensity[],
+static int receive_data(urg_t *urg, long data[], unsigned short intensity[], long io[],
                         long *time_stamp)
 {
     urg_measurement_type_t type;
@@ -660,10 +670,11 @@ static int receive_data(urg_t *urg, long data[], unsigned short intensity[],
         return set_errno_and_return(urg, URG_INVALID_RESPONSE);
     }
 
-    if (buffer[n - 1] != scip_checksum(buffer, n - 1)) {
+    if (buffer[n - 1] != scip_checksum(buffer, n - 1) && (urg->ignore_checkSumError == 0)) {
         // \~japanese チェックサムの評価
         // \~english Validates the checksum
         ignore_receive_data_with_qt(urg, urg->timeout);
+        *time_stamp = 0;
         return set_errno_and_return(urg, URG_CHECKSUM_ERROR);
     }
 
@@ -692,7 +703,7 @@ static int receive_data(urg_t *urg, long data[], unsigned short intensity[],
                 ignore_receive_data_with_qt(urg, urg->timeout);
                 return set_errno_and_return(urg, URG_INVALID_RESPONSE);
             } else {
-                return receive_data(urg, data, intensity, time_stamp);
+                return receive_data(urg, data, intensity, io, time_stamp);
             }
         }
     }
@@ -713,6 +724,25 @@ static int receive_data(urg_t *urg, long data[], unsigned short intensity[],
         //}
     }
 
+    // \~japanese I/Oの取得
+    // \~english Gets I/O
+    if (type == URG_DISTANCE_IO ||
+        type == URG_DISTANCE_INTENSITY_IO) {
+
+        n = connection_readline(&urg->connection,
+            buffer, BUFFER_SIZE, urg->timeout);
+        int io_size = 3;
+        if (n >= (io_size * URG_MAX_IO)) {
+            if (io) {
+                char *p = buffer;
+                for (int i = 0; i < URG_MAX_IO; ++i) {
+                    io[i] = urg_scip_decode(p, io_size);
+                    p += io_size;
+                }
+            }
+        }
+    }
+
     // \~japanese タイムスタンプの取得
     // \~english Gets the timestamp
     n = connection_readline(&urg->connection,
@@ -728,11 +758,13 @@ static int receive_data(urg_t *urg, long data[], unsigned short intensity[],
     switch (type) {
     case URG_DISTANCE:
     case URG_MULTIECHO:
+    case URG_DISTANCE_IO:
         ret = receive_length_data(urg, data, NULL, type, buffer);
         break;
 
     case URG_DISTANCE_INTENSITY:
     case URG_MULTIECHO_INTENSITY:
+    case URG_DISTANCE_INTENSITY_IO:
         ret = receive_length_data(urg, data, intensity, type, buffer);
         break;
 
@@ -756,6 +788,16 @@ static int receive_data(urg_t *urg, long data[], unsigned short intensity[],
     return ret;
 }
 
+void urg_t_initialize(urg_t *urg)
+{
+    urg->is_active = URG_FALSE;
+    urg->is_sending = URG_TRUE;
+    urg->last_errno = URG_NOT_CONNECTED;
+    urg->timeout = MAX_TIMEOUT;
+    urg->scanning_skip_scan = 0;
+    urg->error_handler = NULL;
+    urg->ignore_checkSumError = 1;
+}
 
 int urg_open(urg_t *urg, urg_connection_type_t connection_type,
              const char *device_or_address, long baudrate_or_port)
@@ -763,12 +805,7 @@ int urg_open(urg_t *urg, urg_connection_type_t connection_type,
     int ret;
     long baudrate = baudrate_or_port;
 
-    urg->is_active = URG_FALSE;
-    urg->is_sending = URG_TRUE;
-    urg->last_errno = URG_NOT_CONNECTED;
-    urg->timeout = MAX_TIMEOUT;
-    urg->scanning_skip_scan = 0;
-    urg->error_handler = NULL;
+    urg_t_initialize(urg);
 
     // \~japanese デバイスへの接続
     // \~english Connects to the device
@@ -962,9 +999,8 @@ static int send_distance_command(urg_t *urg, int scan_times, int skip_scan,
 }
 
 
-int urg_start_measurement(urg_t *urg, urg_measurement_type_t type,
-                          int scan_times, int skip_scan)
-{
+int urg_start_measurement(urg_t *urg, urg_measurement_type_t type, int scan_times, int skip_scan,
+                          int ignore_checkSumError) {
     char range_byte_ch;
     int ret = 0;
 
@@ -972,10 +1008,12 @@ int urg_start_measurement(urg_t *urg, urg_measurement_type_t type,
         return set_errno_and_return(urg, URG_NOT_CONNECTED);
     }
 
-    if ((skip_scan < 0) || (skip_scan > 9)) {
+    if (((skip_scan < 0) || (skip_scan > 9)) || ((ignore_checkSumError < 0) || (ignore_checkSumError > 2))) {
         ignore_receive_data_with_qt(urg, urg->timeout);
         return set_errno_and_return(urg, URG_INVALID_PARAMETER);
     }
+
+    urg->ignore_checkSumError = ignore_checkSumError;
 
     // \~japanese  !!! Mx 系, Nx 系の計測中のときは、QT を発行してから
     // \~japanese  !!! 計測開始コマンドを送信するようにする
@@ -999,6 +1037,16 @@ int urg_start_measurement(urg_t *urg, urg_measurement_type_t type,
     case URG_DISTANCE_INTENSITY:
         ret = send_distance_command(urg, scan_times, skip_scan,
                                     'G', 'M', 'E');
+        break;
+
+    case URG_DISTANCE_IO:
+        ret = send_distance_command(urg, scan_times, skip_scan,
+                                    'G', 'M', 'F');
+        break;
+
+    case URG_DISTANCE_INTENSITY_IO:
+        ret = send_distance_command(urg, scan_times, skip_scan,
+                                    'G', 'M', 'G');
         break;
 
     case URG_MULTIECHO:
@@ -1029,9 +1077,16 @@ int urg_get_distance(urg_t *urg, long data[], long *time_stamp)
     if (!urg->is_active) {
         return set_errno_and_return(urg, URG_NOT_CONNECTED);
     }
-    return receive_data(urg, data, NULL, time_stamp);
+    return receive_data(urg, data, NULL, NULL, time_stamp);
 }
 
+int urg_get_distance_io(urg_t* urg, long data[], long io[], long* time_stamp)
+{
+    if (!urg->is_active) {
+        return set_errno_and_return(urg, URG_NOT_CONNECTED);
+    }
+    return receive_data(urg, data, NULL, io, time_stamp);
+}
 
 int urg_get_distance_intensity(urg_t *urg,
                                long data[], unsigned short intensity[],
@@ -1041,9 +1096,19 @@ int urg_get_distance_intensity(urg_t *urg,
         return set_errno_and_return(urg, URG_NOT_CONNECTED);
     }
 
-    return receive_data(urg, data, intensity, time_stamp);
+    return receive_data(urg, data, intensity, NULL, time_stamp);
 }
 
+int urg_get_distance_intensity_io(urg_t* urg,
+                                  long data[], unsigned short intensity[], long io[],
+                                  long* time_stamp)
+{
+    if (!urg->is_active) {
+        return set_errno_and_return(urg, URG_NOT_CONNECTED);
+    }
+
+    return receive_data(urg, data, intensity, io, time_stamp);
+}
 
 int urg_get_multiecho(urg_t *urg, long data_multi[], long *time_stamp)
 {
@@ -1051,7 +1116,7 @@ int urg_get_multiecho(urg_t *urg, long data_multi[], long *time_stamp)
         return set_errno_and_return(urg, URG_NOT_CONNECTED);
     }
 
-    return receive_data(urg, data_multi, NULL, time_stamp);
+    return receive_data(urg, data_multi, NULL, NULL, time_stamp);
 }
 
 
@@ -1064,7 +1129,7 @@ int urg_get_multiecho_intensity(urg_t *urg,
         return set_errno_and_return(urg, URG_NOT_CONNECTED);
     }
 
-    return receive_data(urg, data_multi, intensity_multi, time_stamp);
+    return receive_data(urg, data_multi, intensity_multi, NULL, time_stamp);
 }
 
 
@@ -1089,7 +1154,7 @@ int urg_stop_measurement(urg_t *urg)
     for (i = 0; i < MAX_READ_TIMES; ++i) {
         // \~japanese QT の応答が返されるまで、距離データを読み捨てる
         // \~english Skips measuement data until QT response is received
-        ret = receive_data(urg, NULL, NULL, NULL);
+        ret = receive_data(urg, NULL, NULL, NULL, NULL);
         if (ret == URG_NO_ERROR) {
             // \~japanese 正常応答
             // \~english Correct response
@@ -1221,9 +1286,12 @@ void urg_wakeup(urg_t *urg)
 int urg_is_stable(urg_t *urg)
 {
     const char *stat = urg_sensor_status(urg);
- 
-    return (strncmp("Stable 000 no error", stat, 19) == 0 || strncmp("Sensor works well", stat, 17) == 0 
-                                          || strncmp("sensor is working normally", stat, 26) == 0) ? 1: 0;
+
+    return (strncmp("Stable 000 no error", stat, 19) == 0
+            || strncmp("Sensor works well", stat, 17) == 0
+            || strncmp("sensor is working normally", stat, 26) == 0
+            || strncmp("failed to synchronize", stat, 21) == 0
+            || strncmp("detected multiple master sensor", stat, 31) == 0) ? 1: 0;
 }
 
 
@@ -1282,7 +1350,7 @@ static const int receive_II_command_response(urg_t *urg,
                                             char *buffer, int buffer_size)
 {
     const int vv_expected[] = { 0, EXPECTED_END };
-    int ret; 
+    int ret;
     const char* command ="II\n";
 
     ret = scip_response(urg, command, vv_expected, urg->timeout,
@@ -1376,13 +1444,13 @@ const char *urg_sensor_status(urg_t *urg)
     int ret = 0;
     char *p;
 
-    
+
     if (!urg->is_active) {
         return NOT_CONNECTED_MESSAGE;
     }
 
     ret = receive_II_command_response(urg, receive_buffer, RECEIVE_BUFFER_SIZE);
-    
+
     if (ret != II_RESPONSE_LINES && ret != II_ERROR_RESPONSE_LINES) {
         return RECEIVE_ERROR_MESSAGE;
     }
@@ -1408,14 +1476,14 @@ const char *urg_sensor_state(urg_t *urg)
     }
 
     ret = receive_II_command_response(urg, receive_buffer, RECEIVE_BUFFER_SIZE);
-    
+
     if (ret != II_RESPONSE_LINES && ret != II_ERROR_RESPONSE_LINES) {
         return  RECEIVE_ERROR_MESSAGE;
     }
 
     p = copy_token(urg->return_buffer,
-                   receive_buffer, "MESM:", ";", II_RESPONSE_LINES);   
-  
+                   receive_buffer, "MESM:", ";", II_RESPONSE_LINES);
+
     return (p) ? p : RECEIVE_ERROR_MESSAGE;
 }
 

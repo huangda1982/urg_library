@@ -1,3 +1,26 @@
+2022-09-02
+	* 1.2.7 released.
+	* Added vs2019 project.
+	* Added the feature which can change to ignore check sum error.
+	* Fixed the feature which ignores SIGPIPE when executed send function.
+	
+2022-06-22
+	* 1.2.6 released.
+	* Added get_distance_io and get_distance_intensity_io functions.
+    * Added get_distance_io and get_distance_intensity_io samples for VS2017.
+	* Fixed urg_is_stable function.
+
+2019-10-29
+	* 1.2.5 released.
+	* Added urg_t_initialize function.
+	* Fixed sync_time_stamp sample.
+
+2019-08-20
+	* 1.2.4 released.
+	* Fixed get_sensor_time_stamp to support timestamp offset.
+	* Changed is_open to return urg.is_active.
+	* Added handshake samples.
+
 2018-06-01
 	* 1.2.3 released.
 	* Added x64 setting on VS2010.

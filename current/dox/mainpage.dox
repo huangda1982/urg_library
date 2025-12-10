@@ -26,7 +26,7 @@
   \section mainpage_license ライセンス
 
   (C言語)修正 BSD ライセンスに基づいて配布します。\n
-  (C++)LGPL ライセンスに基づいて配布します。\n
+  (C++)修正 BSD ライセンスに基づいて配布します。\n
   ライセンスの詳細はライブラリ付属の <a href="COPYRIGHT.txt">COPYRIGHT.txt</a> ファイルをご覧下さい。
 
 
@@ -34,7 +34,7 @@
   \section mainpage_license License
 
   (C language)This software is licensed under the New BSD license.\n
-  (C++)This software is licensed under the LGPL license.\n
+  (C++)This software is licensed under the New BSD license.\n
   See the <a href="COPYRIGHT.txt">COPYRIGHT.txt</a> for the actual license text.\n
 
 

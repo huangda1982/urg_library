@@ -1,6 +1,6 @@
 /*!
   \file
-  \~japanese TCP/IP ì«Ç›çûÇ›/èëÇ´çûÇ›Å@ä÷êî 
+  \~japanese TCP/IP Ë™≠„ÅøËæº„Åø/Êõ∏„ÅçËæº„Åø„ÄÄÈñ¢Êï∞
   \brief
   \~english
   \brief TCP/IP read/write functions
@@ -28,7 +28,7 @@ enum {
     Invalid_desc = -1,
 };
 
-// \~japanese â¸çsÇ©Ç«Ç§Ç©ÇÃîªíË
+// \~japanese ÊîπË°å„Åã„Å©„ÅÜ„Åã„ÅÆÂà§ÂÆö
 // \~english Checks wheter is is a EOL character
 static int is_linefeed(const char ch)
 {
@@ -128,7 +128,7 @@ int tcpclient_open(urg_tcpclient_t* cli, const char* ip_str, int port_num)
     }
 
 #if defined(URG_WINDOWS_OS)
-    // \~japanese ÉmÉìÉuÉçÉbÉNÇ…ïœçX
+    // \~japanese „Éé„É≥„Éñ„É≠„ÉÉ„ÇØ„Å´Â§âÊõ¥
     // \~english Configures non-blocking mode
     flag = 1;
     ioctlsocket(cli->sock_desc, FIONBIO, &flag);
@@ -147,18 +147,18 @@ int tcpclient_open(urg_tcpclient_t* cli, const char* ip_str, int port_num)
 
         ret = select((int)cli->sock_desc + 1, &rmask, &wmask, NULL, &tv);
         if (ret == 0) {
-            // \~japanese É^ÉCÉÄÉAÉEÉg
+            // \~japanese „Çø„Ç§„É†„Ç¢„Ç¶„Éà
             // \~english Operation timed out
             tcpclient_close(cli);
             return -2;
         }
     }
-    // \~japanese ÉuÉçÉbÉNÉÇÅ[ÉhÇ…Ç∑ÇÈ
+    // \~japanese „Éñ„É≠„ÉÉ„ÇØ„É¢„Éº„Éâ„Å´„Åô„Çã
     // \~english Returns to blocking mode
     set_block_mode(cli);
 
 #else
-    // \~japanese ÉmÉìÉuÉçÉbÉNÇ…ïœçX
+    // \~japanese „Éé„É≥„Éñ„É≠„ÉÉ„ÇØ„Å´Â§âÊõ¥
     // \~english Configures non-blocking mode
     flag = fcntl(cli->sock_desc, F_GETFL, 0);
     fcntl(cli->sock_desc, F_SETFL, flag | O_NONBLOCK);
@@ -170,7 +170,7 @@ int tcpclient_open(urg_tcpclient_t* cli, const char* ip_str, int port_num)
             return -1;
         }
 
-        // \~japanese EINPROGRESS:ÉRÉlÉNÉVÉáÉìóvãÅÇÕénÇ‹Ç¡ÇΩÇ™ÅAÇ‹ÇæäÆóπÇµÇƒÇ¢Ç»Ç¢
+        // \~japanese EINPROGRESS:„Ç≥„Éç„ÇØ„Ç∑„Éß„É≥Ë¶ÅÊ±Ç„ÅØÂßã„Åæ„Å£„Åü„Åå„ÄÅ„Åæ„Å†ÂÆå‰∫Ü„Åó„Å¶„ÅÑ„Å™„ÅÑ
         // \~english EINPROGRESS: a connection request was already received and not completed yet
         FD_ZERO(&rmask);
         FD_SET(cli->sock_desc, &rmask);
@@ -178,7 +178,7 @@ int tcpclient_open(urg_tcpclient_t* cli, const char* ip_str, int port_num)
 
         ret = select(cli->sock_desc + 1, &rmask, &wmask, NULL, &tv);
         if (ret <= 0) {
-            // \~japanese É^ÉCÉÄÉAÉEÉgèàóù
+            // \~japanese „Çø„Ç§„É†„Ç¢„Ç¶„ÉàÂá¶ÁêÜ
             // \~english Operation timed out
             tcpclient_close(cli);
             return -2;
@@ -186,19 +186,19 @@ int tcpclient_open(urg_tcpclient_t* cli, const char* ip_str, int port_num)
 
         if (getsockopt(cli->sock_desc, SOL_SOCKET, SO_ERROR, (int*)&sock_optval,
                        (socklen_t*)&sock_optval_size) != 0) {
-            // \~japanese ê⁄ë±Ç…é∏îs
+            // \~japanese Êé•Á∂ö„Å´Â§±Êïó
             // \~english Connection failed
             tcpclient_close(cli);
             return -3;
         }
 
         if (sock_optval != 0) {
-            // \~japanese ê⁄ë±Ç…é∏îs
+            // \~japanese Êé•Á∂ö„Å´Â§±Êïó
             // \~english Connection failed
             tcpclient_close(cli);
             return -4;
         }
-        // \~japanese ÉuÉçÉbÉNÉÇÅ[ÉhÇ…Ç∑ÇÈ
+        // \~japanese „Éñ„É≠„ÉÉ„ÇØ„É¢„Éº„Éâ„Å´„Åô„Çã
         // \~english Returns to blocking mode
         set_block_mode(cli);
     }
@@ -248,8 +248,8 @@ int tcpclient_read(urg_tcpclient_t* cli,
         char tmpbuf[BUFSIZE];
         // receive with non-blocking mode.
 #if defined(URG_WINDOWS_OS)
-        int no_timeout = 1;
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&no_timeout, sizeof(struct timeval));
+        u_long val = 1;
+        ioctlsocket(sock, FIONBIO, &val);
         n = recv(sock, tmpbuf, BUFSIZE - num_in_buf, 0);
 #else
         n = recv(sock, tmpbuf, BUFSIZE - num_in_buf, MSG_DONTWAIT);
@@ -269,6 +269,8 @@ int tcpclient_read(urg_tcpclient_t* cli,
     //  lastly recv with blocking but with time out to read necessary size.
     {
 #if defined(URG_WINDOWS_OS)
+        u_long val = 0;
+        ioctlsocket(sock, FIONBIO, &val);
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
                    (const char *)&timeout, sizeof(struct timeval));
 #else

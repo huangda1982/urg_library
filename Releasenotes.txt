@@ -1,3 +1,14 @@
+2025-11-5
+	* 1.2.9 released.
+	* Fixed the bug causing crashes in Windows 11 24H2.
+	* Fixed receive_II_command_response function.
+	* Fixed urg_sleep function.
+	* Fixed send_distance_command function.
+
+2025-09-30
+	* 1.2.8 released.
+	* All license notices have been changed to the simplified BSD license.
+
 2022-09-02
 	* 1.2.7 released.
 	* Added vs2019 project.
